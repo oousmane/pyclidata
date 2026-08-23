@@ -8,12 +8,12 @@ itself, just a thin connector for it, defaulting to ANAM-BF's instance.
 Credentials are stored securely via `keyring` (OS credential store),
 never in plain text.
 
-This is the Python port of the [rclidata](../rclidata) R package. It uses
+This is the Python port of the [rclidata](https://github.com/oousmane/rclidata) R package. It uses
 `python-oracledb`, which needs no JDK and no driver jar -- unlike the R
 package (which wraps RJDBC and needs a JVM + `ojdbc` jar installed
 first), there is no separate Java setup step here at all.
 
-Some Oracle accounts (including CLIDATA's own) use an older password
+Some Oracle DB (including CLIDATA) use an older password
 format that requires an extra one-time setup step -- see
 [Connection error: DPY-3015](#connection-error-dpy-3015) below if you
 run into that.
@@ -53,15 +53,16 @@ import pyclidata as clidata
 # prompt) -- persists your username (never the password) to
 # ~/.config/pyclidata/config.env, so future sessions, including
 # non-interactive ones, don't need this call repeated
-clidata.set_user_creds("jdupont")
+clidata.set_user_creds("oousmane")
 
 # Only needed if the DB isn't at the default clidatadb1:1521/CLIDATA --
 # also persists by default
 clidata.set_host(host="10.0.0.5")
 
 con = clidata.open_clidatadb()
-import pandas as pd
-pd.read_sql("SELECT * FROM some_table WHERE ROWNUM <= 5", con)
+
+rdata_r = clidata.get_table("RDATA_R",con = con)
+rdata_r
 clidata.close_clidatadb(con)
 
 # get_table() always returns a lazy ibis Table expression -- safe for
