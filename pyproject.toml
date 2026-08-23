@@ -1,6 +1,6 @@
 [project]
 name = "pyclidata"
-version = "0.2.0"
+version = "0.2.1"
 description = "Simple connection helpers for a CLIDATA (or other) Oracle database"
 authors = [
     { name = "Ousmane Ouedraogo", email = "oousmane@proton.me" },

@@ -13,13 +13,10 @@ This is the Python port of the [rclidata](../rclidata) R package. It uses
 package (which wraps RJDBC and needs a JVM + `ojdbc` jar installed
 first), there is no separate Java setup step here at all.
 
-By default `python-oracledb` runs in pure-Python **thin mode** -- no
-Oracle Instant Client needed either. However, some Oracle accounts
-(including CLIDATA's own) use a legacy pre-11G password verifier that
-thin mode simply can't authenticate (`DPY-3015`). For that, `pyclidata`
-auto-upgrades to **thick mode** whenever an Oracle Instant Client is
-available, and stays in thin mode otherwise -- see
-[Thick mode / Instant Client](#thick-mode--instant-client) below.
+Some Oracle accounts (including CLIDATA's own) use an older password
+format that requires an extra one-time setup step -- see
+[Connection error: DPY-3015](#connection-error-dpy-3015) below if you
+run into that.
 
 The connection itself is a standard Oracle connection -- nothing about it
 is CLIDATA-specific beyond the default host/service (see `set_host()`) --
@@ -28,34 +25,24 @@ not just CLIDATA. `open_oracledb()`/`close_oracledb()` are aliases of
 `open_clidatadb()`/`close_clidatadb()` for that more general use. This
 package is developed against and tested with a CLIDATA instance.
 
-## Setup
+## Installation
 
-This project is managed with [pixi](https://pixi.sh/). From this directory:
+pyclidata is managed with [pixi](https://pixi.sh/). From this directory:
 
 ```bash
 pixi install
 ```
 
-That resolves and installs everything declared in `pyproject.toml`
-(`oracledb`, `keyring`, `pandas`, `ibis-framework[oracle]`, and
-`pyclidata` itself in editable mode) into a local `.pixi` environment --
-no JDK required. On macOS/Linux it also installs the `oracle-instant-client`
-conda package automatically, for thick-mode support (see below).
+This installs everything you need -- no separate JDK or driver setup
+required.
 
 ## Platform support
 
-`pyclidata` installs and works on **macOS (Intel and Apple Silicon),
-Linux x86_64, and Windows x64** -- verified both via `pip` dependency
-resolution against PyPI and via `pixi install` across all four.
+pyclidata works on **macOS (Intel and Apple Silicon), Linux (x86_64),
+and Windows (x64)**.
 
-**It does not work on Windows ARM64 (`win_arm64`).** Root cause:
-`pyarrow` -- a transitive dependency of `ibis-framework[oracle]`, needed
-for `get_table()`'s lazy table support -- has never published `win_arm64`
-wheels, in any version. This is an upstream
-[Apache Arrow](https://arrow.apache.org/) limitation, not something
-fixable in `pyclidata` itself without dropping `ibis`/lazy tables or
-making them an optional extra. Not currently planned unless it turns out
-someone actually needs it there.
+Windows on ARM64 is not currently supported (a required dependency,
+`pyarrow`, isn't available there yet).
 
 ## Usage
 
@@ -134,46 +121,59 @@ credential setup.
 | `list_tables()`       | List tables in a schema (default: the CLIDATA schema)            |
 | `list_views()`        | List views in a schema (default: the CLIDATA schema)             |
 | `list_variables()`    | List the columns of a table/view or a `get_table()` result       |
+| `install_instantclient()` | Windows only: one-time setup to fix `DPY-3015` connection errors ([details](#connection-error-dpy-3015)) |
 
 Connection defaults: `host = "clidatadb1"`, `port = "1521"`, `service = "CLIDATA"`.
 
-## Thick mode / Instant Client
+## Connection error: DPY-3015
 
-`python-oracledb` defaults to pure-Python thin mode -- no native Oracle
-libraries needed. But CLIDATA's own DB account (and likely others on
-older/operational Oracle instances) uses a legacy pre-11G password
-verifier that thin mode can't authenticate at all, failing with:
+Some Oracle accounts -- including CLIDATA's own -- use an older password
+format that pyclidata can't authenticate against out of the box. If
+`open_clidatadb()` fails with an error like:
 
 ```
 DPY-3015: password verifier type 0x939 is not supported by python-oracledb in thin mode
 ```
 
-`pyclidata` handles this automatically: on `import`, it looks for an
-Oracle Instant Client and switches the whole process to thick mode if
-one is found, silently staying in thin mode otherwise (this is
-`python-oracledb`'s own documented pattern for supporting both). On
-macOS and Linux, `pyproject.toml` declares the `oracle-instant-client`
-conda package so `pixi install` sets this up automatically -- nothing
-manual required. On other platforms (or if you're consuming `pyclidata`
-as an editable dependency from another pixi project), add it to that
-project's own manifest:
+your account needs a one-time additional setup step. What to do depends
+on your platform:
 
-```bash
-pixi add oracle-instant-client
+**macOS and Linux** -- nothing to do. `pixi install` already set up
+everything required; if you're still seeing this error, run `pixi
+install` again to make sure your environment is up to date.
+
+**Windows** -- run this once:
+
+```python
+import pyclidata as clidata
+clidata.install_instantclient()
 ```
 
-(This is a conda package, not a PyPI one -- it doesn't propagate
-automatically through `pyclidata`'s own dependency on it the way a
-regular Python dependency would; each consuming project needs it
-declared directly.)
+This sets up the missing piece automatically.
+
+> **Important:** close this Python session completely and open a new
+> one before connecting -- re-running `open_clidatadb()` in the same
+> session will still fail. Once you're in a fresh session, connect as
+> usual.
+
+If the download fails, Oracle may have retired the specific package
+version pyclidata points to. Download the current "Instant Client Basic
+Light" package for Windows x64 yourself from [Oracle's downloads
+page](https://www.oracle.com/database/technologies/instant-client/winx64-64-downloads.html),
+copy its link, and pass it in directly:
+
+```python
+clidata.install_instantclient(url="<link you copied>")
+```
 
 ## Differences from the R package (`rclidata`)
 
 - **No JDK/driver install.** Unlike R's RJDBC (which always needs a JVM
   + `ojdbc` jar), `install_jdk()`/`install_ojdbc()` have no Python
-  equivalent here -- `python-oracledb` needs neither in thin mode, and
-  thick mode (see above) is set up automatically via a conda package
-  when needed, not a separate manual install step.
+  equivalent here -- `python-oracledb` needs neither by default, and the
+  occasional extra setup step some accounts need (see
+  [Connection error: DPY-3015](#connection-error-dpy-3015)) is one line,
+  not a manual driver install.
 - **`get_table()` is lazy via [ibis](https://ibis-project.org/) instead
   of `dbplyr`.** Same idea as R -- filters/selects are pushed down to
   SQL and nothing is fetched until you materialize (`.to_pandas()`,

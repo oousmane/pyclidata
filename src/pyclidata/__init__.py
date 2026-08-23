@@ -12,12 +12,18 @@ from __future__ import annotations
 import sys
 
 from ._config import load_config
+
+# Must run before .connect is imported: connect.py auto-detects thick
+# mode at import time, including via a PYCLIDATA_INSTANT_CLIENT_DIR
+# persisted by instantclient.install_instantclient() -- that persisted
+# value only reaches os.environ once load_config() has run.
+load_config()
+
 from .connect import close_clidatadb, close_oracledb, open_clidatadb, open_oracledb
 from .creds import get_user_creds, set_user_creds
 from .host import get_host, set_host
+from .instantclient import install_instantclient
 from .tables import get_table, list_tables, list_variables, list_views
-
-load_config()
 
 __all__ = [
     "close_clidatadb",
@@ -25,6 +31,7 @@ __all__ = [
     "get_host",
     "get_table",
     "get_user_creds",
+    "install_instantclient",
     "list_tables",
     "list_variables",
     "list_views",

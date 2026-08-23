@@ -1,16 +1,9 @@
 """Open/close a connection to CLIDATA, or most any Oracle database.
 
-Uses python-oracledb, which needs no JDK and no driver jar -- unlike the
-R package's RJDBC-based approach, there is nothing to manually install
-beyond `pixi install`. By default it runs in pure-Python "thin" mode.
-Some Oracle accounts (e.g. CLIDATA's own, on a legacy pre-11G password
-verifier) can't authenticate over thin mode at all (oracledb error
-DPY-3015) -- only "thick" mode, backed by the native Oracle Instant
-Client, supports those. This module auto-upgrades to thick mode if an
-Instant Client is available (installed via the `oracle-instant-client`
-conda package on platforms that support it -- see pyproject.toml) and
-silently stays in thin mode otherwise, following python-oracledb's own
-documented pattern for this.
+Uses python-oracledb -- no JDK or driver jar required. Some Oracle
+accounts (e.g. CLIDATA's own) need an extra one-time setup step to
+connect at all; see the README's "Connection error: DPY-3015" section
+if open_clidatadb() raises that.
 """
 
 from __future__ import annotations
@@ -27,19 +20,27 @@ from .host import get_host
 
 def _init_thick_mode_if_available() -> None:
     """Best-effort switch to thick mode; must run before any connection
-    is opened in this process -- thin vs. thick is a process-wide
-    setting in python-oracledb that can't be changed afterward.
+    is opened -- thin vs. thick mode can't be changed later in the same
+    process.
     """
-    lib_dir = None
-    conda_prefix = os.environ.get("CONDA_PREFIX")
-    if conda_prefix:
-        candidates = sorted(
-            glob.glob(
-                os.path.join(conda_prefix, "oracle_instant_client", "instantclient_*")
+    # Set by instantclient.install_instantclient() on Windows, where
+    # thick mode has no automatic setup path (see below).
+    lib_dir = os.environ.get("PYCLIDATA_INSTANT_CLIENT_DIR")
+
+    if lib_dir is None:
+        # macOS/Linux: set up automatically via the oracle-instant-client
+        # conda package (pyproject.toml) inside a conda/pixi environment.
+        conda_prefix = os.environ.get("CONDA_PREFIX")
+        if conda_prefix:
+            candidates = sorted(
+                glob.glob(
+                    os.path.join(
+                        conda_prefix, "oracle_instant_client", "instantclient_*"
+                    )
+                )
             )
-        )
-        if candidates:
-            lib_dir = candidates[-1]
+            if candidates:
+                lib_dir = candidates[-1]
 
     try:
         oracledb.init_oracle_client(lib_dir=lib_dir)
@@ -78,9 +79,16 @@ def open_clidatadb(user: str | None = None) -> oracledb.Connection:
             user=creds["user"], password=creds["password"], dsn=dsn
         )
     except oracledb.Error as e:
+        hint = ""
+        full_code = getattr(e.args[0], "full_code", "") if e.args else ""
+        if full_code == "DPY-3015" and oracledb.is_thin_mode():
+            hint = (
+                " See the pyclidata README's 'Connection error: DPY-3015' "
+                "section for how to fix this."
+            )
         raise ConnectionError(
             f"Failed to connect to CLIDATA at {dsn} as user "
-            f"'{creds['user']}': {e}"
+            f"'{creds['user']}': {e}{hint}"
         ) from e
 
 

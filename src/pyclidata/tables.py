@@ -21,26 +21,17 @@ don't reopen it each time.
 from __future__ import annotations
 
 import weakref
-from typing import Any
 
 import ibis
 import ibis.expr.operations as ops
 import oracledb
-import pandas as pd
 from ibis.backends.oracle import metadata_row_to_type
+
+from .checks import check_connection, check_table
 
 _ibis_cache: "weakref.WeakKeyDictionary[oracledb.Connection, ibis.BaseBackend]" = (
     weakref.WeakKeyDictionary()
 )
-
-
-def _check_con(con: Any) -> None:
-    if con is None or not isinstance(con, oracledb.Connection):
-        raise TypeError(
-            "`con` is required. Open one with open_clidatadb() and pass "
-            "it in, e.g.\n"
-            "  con = open_clidatadb()\n"
-        )
 
 
 def _stop_if_closed(e: Exception) -> None:
@@ -159,7 +150,7 @@ def get_table(
 
     if not table:
         raise ValueError("`table` is required, e.g. get_table('V_DAY_ALL_NULL')")
-    _check_con(con)
+    check_connection(con)
 
     if "." in table:
         tbl_schema, tbl_name = table.split(".", 1)
@@ -195,7 +186,7 @@ def list_tables(
     """
     from .host import get_host
 
-    _check_con(con)
+    check_connection(con)
     if schema is None:
         schema = get_host()["service"]
 
@@ -232,7 +223,7 @@ def list_views(
     """
     from .host import get_host
 
-    _check_con(con)
+    check_connection(con)
     if schema is None:
         schema = get_host()["service"]
 
@@ -252,7 +243,7 @@ def list_views(
 
 
 def list_variables(
-    table: str | pd.DataFrame | ibis.expr.types.Table,
+    table: str | ibis.expr.types.Table,
     con: oracledb.Connection | None = None,
     schema: str | None = None,
 ) -> list[str]:
@@ -277,9 +268,10 @@ def list_variables(
     from .host import get_host
 
     if not isinstance(table, str):
+        check_table(table, arg="table")
         return list(table.columns)
 
-    _check_con(con)
+    check_connection(con)
     if "." in table:
         tbl_schema, tbl_name = table.split(".", 1)
     else:
